@@ -5,18 +5,30 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+function Invoke-Git {
+  param([string[]]$Args)
+  & git @Args
+  if ($LASTEXITCODE -ne 0) {
+    throw "git $($Args -join ' ') failed with exit code $LASTEXITCODE"
+  }
+}
+
 $dirty = git status --porcelain
 if ($dirty) {
   throw "Working tree has uncommitted changes. Commit or stash them before syncing."
 }
 
 Write-Host "==> Fetching upstream..." -ForegroundColor Cyan
-git fetch upstream
+Invoke-Git @("fetch", "upstream")
 
 Write-Host "==> Rebasing local commits onto upstream/main..." -ForegroundColor Cyan
-git rebase upstream/main
+& git rebase upstream/main
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "Rebase hit a conflict. Resolve conflicts, run 'git rebase --continue', then push." -ForegroundColor Yellow
+  exit $LASTEXITCODE
+}
 
 Write-Host "==> Pushing to origin/main..." -ForegroundColor Cyan
-git push --force-with-lease origin main
+Invoke-Git @("push", "--force-with-lease", "origin", "main")
 
 Write-Host "==> Done! Synced with upstream/main." -ForegroundColor Green
