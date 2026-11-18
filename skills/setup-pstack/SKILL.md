@@ -9,9 +9,9 @@ Write pstack's model settings, one model per role:
 
 - **Cursor:** `~/.cursor/rules/pstack-models.mdc`, an always-applied rule.
 - **Claude Code:** `~/.claude/rules/pstack-models.md`. Claude Code loads every file in `~/.claude/rules/` into each new session.
-- **Every other harness** (Codex, Pi, OpenCode, and others): `~/.agents/pstack-models.md`. These harnesses don't load it on their own, so pstack skills read this file when they pick a model.
+- **Every other harness** (Antigravity, Codex, Pi, OMP, OpenCode, and others): `.agents/pstack-models.md` in the current project root (never write to `~/.agents/pstack-models.md` unless the user explicitly asks for a global file). These harnesses don't load it on their own, so pstack skills read this file when they pick a model.
 
-"The settings file" below means the file for your harness. In Claude Code, if that file is missing, read `~/.agents/pstack-models.md` instead, where older versions of this skill wrote it.
+"The settings file" below means the file for your harness (check `.agents/pstack-models.md` in the current project root first; fall back to `~/.agents/pstack-models.md` only when reading if the project file is missing). In Claude Code, if that file is missing, read `.agents/pstack-models.md` or `~/.agents/pstack-models.md` instead.
 
 ## Steps
 
@@ -75,7 +75,7 @@ interrogate reviewers: claude-fable-5-2-high, claude-opus-5-5-high-fast, gemini-
 
 ### 6. Confirm
 
-Tell the user which file was written. In Cursor and Claude Code, it applies to new sessions. In other harnesses, pstack skills read `~/.agents/pstack-models.md` when they pick a model. Re-running this skill updates it.
+Tell the user which file was written. In Cursor and Claude Code, it applies to new sessions. In other harnesses, pstack skills read `.agents/pstack-models.md` in the project root when they pick a model. Re-running this skill updates it.
 
 ### 7. Offer a verification skill (optional)
 
