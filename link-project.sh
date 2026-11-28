@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Link (or unlink) pstack skills into a specific project directory (for WSL2 / Linux / macOS).
-# Links into <target>/.agents/skills (Antigravity, Codex, OMP, OpenCode) and <target>/.pi/skills (Pi).
+# Copy pstack skills into <target>/.agents/skills (WSL2 / Linux / macOS).
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PSTACK_SKILLS="$SCRIPT_DIR/skills"
-TOOLS=(".agents/skills" ".pi/skills")
 UNLINK=0
 ONLY=""
 TARGET=""
@@ -42,6 +40,9 @@ if [ -n "$ONLY" ]; then
   for name in "${WANTED[@]}"; do
     name=$(echo "$name" | xargs)
     [ -n "$name" ] || continue
+    case "$name" in
+      .*|*/*) echo "Unknown skill: $name" >&2; exit 1 ;;
+    esac
     [ -d "$PSTACK_SKILLS/$name" ] || { echo "Unknown skill: $name" >&2; exit 1; }
     SKILLS+=("$name")
   done
@@ -52,34 +53,73 @@ else
   done
 fi
 
-for rel in "${TOOLS[@]}"; do
-  dest="$TARGET/$rel"
-  if [ "$UNLINK" -eq 1 ]; then
-    [ -d "$dest" ] || { echo "$dest => not found, skipped"; continue; }
-    removed=0
-    for entry in "$dest"/*; do
-      [ -L "$entry" ] || continue
-      link_target=$(readlink "$entry" || true)
-      case "$link_target" in
-        "$PSTACK_SKILLS"/*)
-          rm "$entry"
-          removed=$((removed + 1))
-          ;;
-      esac
-    done
-    echo "$dest => unlinked $removed pstack skill(s)"
-  else
-    mkdir -p "$dest"
-    added=0
-    skipped=0
-    for name in "${SKILLS[@]}"; do
-      if [ -e "$dest/$name" ] || [ -L "$dest/$name" ]; then
-        skipped=$((skipped + 1))
-      else
-        ln -s "$PSTACK_SKILLS/$name" "$dest/$name"
-        added=$((added + 1))
-      fi
-    done
-    echo "$dest => linked $added skill(s) (skipped $skipped existing)"
-  fi
+agents="$TARGET/.agents"
+dest="$agents/skills"
+marker=.pstack-installed
+for directory in "$agents" "$dest"; do
+  [ ! -L "$directory" ] || { echo "Destination must be a real directory: $directory" >&2; exit 1; }
 done
+if [ "$UNLINK" -eq 1 ] && [ ! -d "$dest" ]; then
+  echo "$dest => not found, skipped"
+  exit 0
+fi
+mkdir -p -- "$dest"
+
+entry_exists() {
+  [ -e "$1" ] || [ -L "$1" ]
+}
+
+is_pstack_skill() {
+  if [ -L "$1" ]; then
+    [ "$(readlink "$1")" = "$PSTACK_SKILLS/${1##*/}" ]
+  else
+    [ -d "$1" ] && [ -f "$1/$marker" ]
+  fi
+}
+
+lock="$agents/.pstack-sync.lock"
+(set -o noclobber; : > "$lock") || exit 1
+work=
+entry=
+cleanup() {
+  if [ -n "$work" ]; then
+    if [ -n "$entry" ] && entry_exists "$work/previous" && ! entry_exists "$entry"; then
+      mv -- "$work/previous" "$entry" || { rm -- "$lock"; return 1; }
+    fi
+    rm -rf -- "$work"
+  fi
+  rm -- "$lock"
+}
+trap cleanup EXIT
+
+if [ "$UNLINK" -eq 1 ]; then
+  removed=0
+  for entry in "$dest"/*; do
+    is_pstack_skill "$entry" || continue
+    rm -rf -- "$entry"
+    removed=$((removed + 1))
+  done
+  echo "$dest => removed $removed pstack skill(s)"
+else
+  work=$(mktemp -d "$agents/.pstack-sync.XXXXXXXX")
+  copied=0
+  skipped=0
+  for name in "${SKILLS[@]}"; do
+    entry="$dest/$name"
+    if entry_exists "$entry" && ! is_pstack_skill "$entry"; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    # Stage the complete copy before replacing the installed version.
+    cp -RL -- "$PSTACK_SKILLS/$name" "$work/next"
+    : > "$work/next/$marker"
+    if entry_exists "$entry"; then
+      mv -- "$entry" "$work/previous"
+    fi
+    mv -- "$work/next" "$entry"
+    rm -rf -- "$work/previous"
+    copied=$((copied + 1))
+  done
+  echo "$dest => copied $copied skill(s) (skipped $skipped project skill(s))"
+fi

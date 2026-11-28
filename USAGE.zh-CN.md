@@ -8,7 +8,7 @@
 
 ## 一、本机部署架构与全生命周期维护
 
-pstack 采用**独立仓库 + 按项目挂载**的方式管理，避免把重型工程规则装进每次轻量对话：
+pstack 采用**独立仓库 + 按项目复制**的方式管理，避免把重型工程规则装进每次轻量对话：
 
 | 项目 | 路径 / 值 |
 | :--- | :--- |
@@ -16,44 +16,44 @@ pstack 采用**独立仓库 + 按项目挂载**的方式管理，避免把重型
 | WSL2 仓库 | `/mnt/d/Code/Personal/pstack` |
 | `origin` | `https://github.com/fwrite0920/pstack.git` |
 | `upstream` | `https://github.com/backnotprop/pstack.git` |
-| 项目 Skill 目录 | `<项目>\.agents\skills\`、`<项目>\.pi\skills\` |
+| 项目 Skill 目录 | `<项目>\.agents\skills\` |
 | 项目模型配置 | `<项目>\.agents\pstack-models.md`（Antigravity / Codex / OMP / Pi 等） |
 
-### 1. 给指定项目挂载 / 卸载 pstack
+### 1. 给指定项目同步 / 卸载 pstack
 
-**Windows PowerShell（NTFS Junction，Windows 与 WSL2 都能直接读取）：**
+**Windows PowerShell：**
 
 ```powershell
-# 挂载全部 59 个 Skill
+# 复制全部 Skill
 D:\Code\Personal\pstack\link-project.ps1 -Target D:\Code\你的项目
 
-# 只挂载挑选的几个 Skill
+# 只复制挑选的几个 Skill
 D:\Code\Personal\pstack\link-project.ps1 -Target D:\Code\你的项目 -Only architect,blast-radius,interrogate,tdd
 
-# 安全卸载：只删除指向本仓库 skills 的链接，不碰项目自有 Skill
+# 卸载 pstack 管理的 Skill
 D:\Code\Personal\pstack\link-project.ps1 -Target D:\Code\你的项目 -Unlink
 ```
 
-`-Tools` 可改挂载目录，默认 `@(".agents/skills", ".pi/skills")`。`-Only` 同时接受逗号分隔和 PowerShell 数组。
+脚本统一将 Skill 目录复制到 `.agents/skills/`。`-Only` 同时接受逗号分隔和 PowerShell 数组。
 
 **WSL2 / Linux / macOS：**
 
 ```bash
-# 挂载全部
+# 复制全部
 /mnt/d/Code/Personal/pstack/link-project.sh ~/Code/你的项目
 
-# 只挂载指定几个
+# 只复制指定几个
 /mnt/d/Code/Personal/pstack/link-project.sh --only architect,blast-radius,interrogate ~/Code/你的项目
 
 # 安全卸载
 /mnt/d/Code/Personal/pstack/link-project.sh --unlink ~/Code/你的项目
 ```
 
-挂载是**增量**的：已存在的同名条目会跳过，不会覆盖项目自有 Skill；卸载只删除链接目标位于本仓库 `skills/` 下的符号链接或 Junction。
+重复运行会刷新选定的 pstack 副本，旧版脚本创建的链接会换成实际目录。项目自有的同名 Skill 会跳过。卸载会移除脚本标记的副本和指向本仓库的旧链接。
 
-> **防误提交**：挂载到团队仓库时，把 `.agents/`、`.pi/` 写进**本地** `.git/info/exclude`，不改共享的 `.gitignore`：
+> **防误提交**：同步到团队仓库时，把 `.agents/` 写进**本地** `.git/info/exclude`：
 > ```bash
-> printf "\n.agents/\n.pi/\n" >> .git/info/exclude
+> printf "\n.agents/\n" >> .git/info/exclude
 > ```
 
 ### 2. 同步上游更新
@@ -72,7 +72,7 @@ D:\Code\Personal\pstack\sync-upstream.ps1
 
 - 工作区有未提交改动时直接退出，先 commit 或 stash。
 - rebase 冲突时脚本会停止并提示；解决冲突后执行 `git rebase --continue`，再手动 `git push --force-with-lease origin main`。
-- 软链挂载的项目会立即看到 Skill 内容更新；只有上游**新增了 Skill 目录**时，才需要在用到的项目里重跑一次挂载脚本。
+- 更新 pstack 仓库后，在需要更新的项目里重跑项目同步脚本。
 
 ---
 
@@ -340,8 +340,8 @@ interrogate reviewers: claude-fable-5-2-high, claude-opus-5-5-high-fast, gemini-
 
 跨近 2–4 周会话切成多片并发挖掘，跨 2 个以上切片重复出现的模式才算高置信，用选择题对齐边界，生成 `<你的名字>-mode/SKILL.md`；以后基于 `git log` 增量更新。
 
-> **软链环境提醒**
-> 挂载后的 `.agents/skills/*` 指向本仓库 `skills/*`。
+> **项目副本**
+> `.agents/skills/` 下由脚本安装的 Skill 会在下次同步时被刷新。
 > - 跨项目通用经验，才让 `/reflect` 改本仓库 Skill；
 > - 某个项目独有的规范和坑，让 `/correct` 写进该项目的 `AGENTS.md` / Lint / CI 或新建项目专属 Skill，避免污染通用仓库。
 
@@ -464,7 +464,7 @@ interrogate reviewers: claude-fable-5-2-high, claude-opus-5-5-high-fast, gemini-
 | 多个子代理互相覆盖代码 | 多个写操作共享同一工作区 | Prompt 明确要求每个写代码的子代理用独立 `git worktree` |
 | Agent 说“改好了、编译通过”但没跑通 | 未触发真实端到端验证 | `/poteto-mode` 下点名 `Apply prove-it-works`，要求真实输出 |
 | 过夜长任务空转 | 没有可判定的完成条件 | 先写 PASS/FAIL 断言或命令，再限定最大尝试次数 |
-| 同步后找不到新 Skill | 上游新增了 Skill 目录，旧挂载没包含 | 对目标项目重跑 `link-project.ps1` / `.sh` |
+| 项目里的 Skill 版本较旧或缺少新 Skill | pstack 仓库与项目副本分别更新 | 对目标项目重跑 `link-project.ps1` / `.sh` |
 | 同步脚本报工作区不干净 | 有未提交改动 | 先 commit 或 stash，再跑 `sync-upstream` |
 | rebase 冲突 | 本地修改与上游改到同一文件 | 解决冲突 → `git rebase --continue` → 手动 `git push --force-with-lease origin main` |
 
